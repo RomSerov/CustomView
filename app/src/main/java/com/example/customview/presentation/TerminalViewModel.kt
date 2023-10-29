@@ -1,6 +1,5 @@
 package com.example.customview.presentation
 
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.customview.data.ApiFactory
@@ -9,25 +8,35 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class TerminalViewModel: ViewModel() {
+class TerminalViewModel : ViewModel() {
 
     private val apiService = ApiFactory.apiService
 
     private val _state = MutableStateFlow<TerminalScreenState>(TerminalScreenState.Initial)
     val state = _state.asStateFlow()
 
+    private var lastState: TerminalScreenState = TerminalScreenState.Initial
+
     private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
-        Log.e("Terminal", "${throwable.message}")
+        _state.value = lastState
     }
 
     init {
         loadBarList()
     }
 
-    private fun loadBarList() {
+    fun loadBarList(timeFrame: TimeFrame = TimeFrame.HOUR_1) {
+        lastState = _state.value
+        _state.value = TerminalScreenState.Loading
         viewModelScope.launch(exceptionHandler) {
-           val barList = apiService.loadBars().barList
-            _state.value = TerminalScreenState.Content(barList = barList)
+            val barList = apiService.loadBars(
+                timeframe = timeFrame.value
+            ).barList
+
+            _state.value = TerminalScreenState.Content(
+                barList = barList,
+                timeFrame = timeFrame
+            )
         }
     }
 }

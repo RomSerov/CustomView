@@ -1,92 +1,69 @@
 package com.example.customview.presentation.components
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.TransformableState
-import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.layout.onSizeChanged
-import com.example.customview.data.model.Bar
-import kotlin.math.roundToInt
+import androidx.compose.ui.text.ExperimentalTextApi
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.customview.presentation.TerminalScreenState
+import com.example.customview.presentation.TerminalViewModel
 
-private const val MIN_VISIBLE_BARS_COUNT = 20
 
+@OptIn(ExperimentalTextApi::class)
 @Composable
 fun Terminal(
-    bars: List<Bar>
+    modifier: Modifier = Modifier
 ) {
-    var terminalState by rememberTerminalState(barList = bars)
+    val viewModel: TerminalViewModel = viewModel()
+    val screenState = viewModel.state.collectAsState()
 
-    val transformableState = TransformableState { zoomChange, panChange, _ ->
-        val visibleBarsCount = (terminalState.visibleBarsCount / zoomChange)
-            .roundToInt()
-            .coerceIn(
-                minimumValue = MIN_VISIBLE_BARS_COUNT,
-                maximumValue = bars.size
+    when (val currentState = screenState.value) {
+        is TerminalScreenState.Content -> {
+            val terminalState = rememberTerminalState(bars = currentState.barList)
+            Chart(
+                modifier = modifier,
+                terminalState = terminalState,
+                onTerminalStateChanged = {
+                    terminalState.value = it
+                },
+                timeFrame = currentState.timeFrame
             )
-        val scrolledBy = (terminalState.scrolledBy + panChange.x)
-            .coerceAtLeast(minimumValue = 0f)
-            .coerceAtMost(maximumValue = bars.size * terminalState.barWidth - terminalState.terminalWidth)
 
-        terminalState = terminalState.copy(
-            visibleBarsCount = visibleBarsCount,
-            scrolledBy = scrolledBy
-        )
-    }
-
-    Canvas(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(color = Color.Black)
-            .transformable(state = transformableState)
-            .onSizeChanged {
-                terminalState = terminalState.copy(
-                    terminalWidth = it.width.toFloat()
+            currentState.barList.firstOrNull()?.let {
+                Prices(
+                    modifier = modifier,
+                    terminalState = terminalState,
+                    lastPrice = it.close
                 )
-            },
-        onDraw = {
-            val maxHeightPoint = terminalState.visibleBars.maxOf { it.high }
-            val minHeightPoint = terminalState.visibleBars.minOf { it.high }
-            val pxPerPoint = size.height / (maxHeightPoint - minHeightPoint)
+            }
 
-            translate(left = terminalState.scrolledBy) {
-                bars.forEachIndexed { index, bar ->
-                    val offsetX =
-                        size.width - index * terminalState.barWidth //чтоб свечи рисовали справа налево
-                    drawLine(
-                        color = Color.White,
-                        start = Offset(
-                            x = offsetX,
-                            y = size.height - (bar.low - minHeightPoint) * pxPerPoint
-                        ),
-                        end = Offset(
-                            x = offsetX,
-                            y = size.height - (bar.high - minHeightPoint) * pxPerPoint
-                        ),
-                        strokeWidth = 1f
-                    )
-
-                    drawLine(
-                        color = if (bar.open < bar.close) Color.Green else Color.Red,
-                        start = Offset(
-                            x = offsetX,
-                            y = size.height - (bar.low - minHeightPoint) * pxPerPoint
-                        ),
-                        end = Offset(
-                            x = offsetX,
-                            y = size.height - (bar.high - minHeightPoint) * pxPerPoint
-                        ),
-                        strokeWidth = terminalState.barWidth / 2
-                    )
+            TimeFrames(
+                selectedFrame = currentState.timeFrame,
+                onTimeFrameSelected = {
+                    viewModel.loadBarList(it)
                 }
+            )
+        }
+
+        TerminalScreenState.Initial -> {
+
+        }
+
+        TerminalScreenState.Loading -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
             }
         }
-    )
+    }
 }
